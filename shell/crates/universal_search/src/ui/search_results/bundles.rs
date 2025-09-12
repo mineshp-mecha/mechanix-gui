@@ -3,7 +3,10 @@ use bevy::{
     prelude::*,
 };
 
-use crate::types::{DesktopApp, SearchResult, SearchResultType};
+use crate::{
+    types::{DesktopApp, SearchResult, SearchResultType},
+    ui::search_results::components::SearchResultsComponent,
+};
 
 pub fn search_results(
     results: Vec<SearchResult>,
@@ -32,26 +35,12 @@ pub fn search_results(
             offset_x: 0.0,
             offset_y: 0.0,
         },
-        // SearchResultsComponent,
+        SearchResultsComponent,
         BackgroundColor(Color::oklch(0.173, 0., 0.)),
         ZIndex(99),
-        Children::spawn(SpawnWith(move |parent: &mut RelatedSpawner<ChildOf>| {
-            for result in results {
-                parent.spawn(search_result_item(result, arrow_up_right.clone()));
-            }
-
-            browser_apps.iter().for_each(|app| {
-                parent.spawn(search_result_item(
-                    SearchResult {
-                        name: format!("Search {} on {}", results_for.clone(), app.name.clone()),
-                        icon: app.icon.clone(),
-                        on_click: None,
-                        _type: SearchResultType::App,
-                    },
-                    arrow_up_right.clone(),
-                ));
-            });
-        })),
+        // Children::spawn(SpawnWith(move |parent: &mut RelatedSpawner<ChildOf>| {
+        //
+        // })),
     )
 }
 fn separator() -> impl Bundle {

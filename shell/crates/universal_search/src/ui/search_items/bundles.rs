@@ -7,6 +7,7 @@ use crate::{
     icons::UniversalSearchIcons,
     systems::NORMAL_BUTTON,
     types::{SearchResult, SearchResultType},
+    ui::SearchItemsComponent,
 };
 use types::prelude::*;
 
@@ -32,50 +33,7 @@ pub fn search_items(
             offset_x: 0.0,
             offset_y: 0.0,
         },
-        Children::spawn(SpawnWith(move |parent: &mut RelatedSpawner<ChildOf>| {
-            for result in results.into_iter().take(5) {
-                let mut commands = parent.world_mut().commands();
-                let cloned_result = result.clone();
-                // let on_click =
-                //     commands.register_system(
-                //         move |mut commands: Commands,
-                //               mut q_universal_search: Query<Entity, With<UniversalSearch>>,
-                //               search_result: Res<AppSearchResultUiResource>,
-                //               mut q_input: Query<
-                //             (&mut Text, &mut TextColor),
-                //             With<SearchInput>,
-                //         >| {
-                //             commands.insert_resource(SearchText(cloned_result.clone()));
-                //             for (mut text, mut text_color) in q_input.iter_mut() {
-                //                 text.0 = cloned_result.clone();
-                //                 text_color.0 = Color::WHITE;
-                //             }
-                //             let final_results = search_result.0.clone();
-                //             for universal_search in q_universal_search.iter_mut() {
-                //                 let mut browser_apps: Vec<SearchResult> = vec![];
-                //                 let mut results: Vec<SearchResult> = vec![];
-
-                //                 let entity = commands.spawn_empty().id();
-                //                 results.append(&mut browser_apps);
-                //                 let sr = commands
-                //                     .entity(entity)
-                //                     .insert(search_results(final_results.clone()))
-                //                     .id();
-
-                //                 commands.entity(universal_search).add_child(sr);
-                //             }
-                //         },
-                //     );
-
-                parent.spawn(
-                    (search_item(
-                        &result,
-                        &arrow_up_right_icon, // on_click
-                        &font_assets,
-                    )),
-                );
-            }
-        })),
+        SearchItemsComponent,
     )
 }
 

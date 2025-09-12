@@ -22,3 +22,4 @@ utils = { path = "../utils" }
 types = { path = "../types" }
 freedesktop-desktop-entry = "0.7.13"
 freedesktop-icons = "0.4.0"
+service_plugins = { path = "../service_plugins/"}

@@ -10,7 +10,7 @@ pub struct DesktopApp {
     pub on_click: SystemId,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SearchResultType {
     App,
     File,

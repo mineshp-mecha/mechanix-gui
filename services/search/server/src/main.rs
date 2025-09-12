@@ -61,31 +61,16 @@ async fn main() -> Result<(), ServerError> {
 
     debug!("D-Bus connection built");
 
-    let mut app_search_service = match AppSearchService::new(&config.apps) {
-        Ok(s) => s,
-        Err(e) => {
-            error!("Failed to create app search service: {}", e);
-            return Err(ServerError::FailedStartAppSearchService(e));
-        }
-    };
 
-    let mut file_search_service = match FileSearchService::new(&config.files) {
-        Ok(s) => s,
-        Err(e) => {
-            error!("Failed to create file search service: {}", e);
-            return Err(ServerError::FailedStartFileSearchService(e));
-        }
-    };
-
-    let mut app_action_service = match AppActionsService::new(&config.app_actions) {
-        Ok(s) => s,
-        Err(e) => {
-            error!("Failed to create app actions service: {}", e);
-            return Err(ServerError::FailedStartAppActionsService(e));
-        }
-    };
-
+    let mut app_search_service_opt = None;
     if config.apps.enable_search {
+        let mut app_search_service = match AppSearchService::new(&config.apps) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to create app search service: {}", e);
+                return Err(ServerError::FailedStartAppSearchService(e));
+            }
+        };
         match app_search_service.run().await {
             Ok(()) => debug!("AppSearchService started"),
             Err(e) => {
@@ -93,9 +78,18 @@ async fn main() -> Result<(), ServerError> {
                 return Err(ServerError::FailedStartAppSearchService(e));
             }
         }
+        app_search_service_opt = Some(app_search_service)
     }
 
-    if config.files.enable_search {
+    let mut file_search_service_opt = None;
+    if config.files.enable_search { 
+        let mut file_search_service = match FileSearchService::new(&config.files) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to create file search service: {}", e);
+                return Err(ServerError::FailedStartFileSearchService(e));
+            }
+        };
         match file_search_service.run().await {
             Ok(()) => debug!("FileSearchService started"),
             Err(e) => {
@@ -103,9 +97,18 @@ async fn main() -> Result<(), ServerError> {
                 return Err(ServerError::FailedStartFileSearchService(e));
             }
         }
+        file_search_service_opt = Some(file_search_service)
     }
 
+    let mut app_action_service_opt = None;
     if config.app_actions.enable_search {
+        let mut app_action_service = match AppActionsService::new(&config.app_actions) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to create app actions service: {}", e);
+                return Err(ServerError::FailedStartAppActionsService(e));
+            }
+        };
         match app_action_service.run().await {
             Ok(()) => debug!("FileSearchService started"),
             Err(e) => {
@@ -113,13 +116,14 @@ async fn main() -> Result<(), ServerError> {
                 return Err(ServerError::FailedStartAppActionsService(e));
             }
         }
+        app_action_service_opt = Some(app_action_service)
     }
     // Build and register the D-Bus server (blocking until shutdown)
     let config_server = ServerInterface {
         config: config.clone(),
-        app_search_service: app_search_service,
-        file_search_service: file_search_service,
-        app_actions_service: app_action_service,
+        app_search_service: app_search_service_opt,
+        file_search_service: file_search_service_opt,
+        app_actions_service: app_action_service_opt,
     };
 
     debug!("D-Bus server registered at {}", SERVED_AT);

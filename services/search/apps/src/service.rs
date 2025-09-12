@@ -3,6 +3,7 @@ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::fs::read_dir;
 use std::{
     collections::HashMap,
+    fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
@@ -10,12 +11,14 @@ use std::{
 
 use crate::utils::{get_last_modified_timestamp, parse_desktop_entry, DesktopEntry};
 use crate::Apps;
-use tantivy::query::TermQuery;
-use tantivy::schema::{Field, IndexRecordOption, Value, STRING};
+use tantivy::query::{AllQuery, TermQuery};
+use tantivy::schema::{Field, IndexRecordOption, Value, FAST, STRING};
+use tantivy::time::format_description::well_known::Rfc3339;
+use tantivy::time::OffsetDateTime;
 use tantivy::{
-    collector::TopDocs, doc, query::QueryParser, schema::{Schema, STORED, TEXT}, Document, Index,
-    IndexReader,
+    collector::TopDocs, doc, query::QueryParser, schema::{Schema, STORED, TEXT}, DateTime, DocAddress, Document, Index, IndexReader,
     IndexWriter,
+    Order,
     TantivyDocument,
     Term,
 };
@@ -38,12 +41,25 @@ pub struct AppInfo {
 }
 /// Public entry point for the app search service.
 
+#[derive(Type, SerializeDict, DeserializeDict, Debug, Default, Clone)]
+#[zvariant(signature = "dict")]
+pub struct RecentAppMetadata {
+    pub name: String,
+    pub icon: String,
+    pub exec: String,
+    pub path: String,
+    pub last_accessed: String,
+}
+
 #[derive()]
 pub struct AppSearchService {
     config: Apps,
     schema: Schema,
+    recent_apps_schema: Schema,
     index: Index,
+    recent_apps_index: Index,
     writer: Arc<Mutex<IndexWriter>>,
+    recent_app_writer: IndexWriter,
     index_worker_handle: Option<JoinHandle<()>>,
     watcher_handler: Option<JoinHandle<()>>,
 }
@@ -172,12 +188,36 @@ impl AppSearchService {
         schema_builder.build()
     }
 
+    fn create_recent_app_schema() -> Schema {
+        let mut schema_builder = tantivy::schema::Schema::builder();
+        schema_builder.add_text_field("name", STRING | STORED);
+        schema_builder.add_text_field("exec", STORED);
+        schema_builder.add_text_field("icon", STORED);
+        schema_builder.add_text_field("path", STORED);
+        schema_builder.add_date_field("last_accessed", FAST);
+
+        schema_builder.build()
+    }
+
     /// Create a new service instance.
     pub fn new(config: &Apps) -> anyhow::Result<Self> {
+        info!("creating new app service instance: ");
         let home_dir =
             dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?;
         let schema = Self::create_schema();
+        let recent_apps_schema = Self::create_recent_app_schema();
         let index_path = home_dir.join(&config.index_dir);
+        let recent_apps_path = home_dir.join(&config.recent_apps_dir);
+        debug!("index path: {:?}", index_path);
+        //Create index dir if not exist
+        if !index_path.exists() {
+            debug!("creating index path for apps");
+            fs::create_dir_all(&index_path)?;
+        }
+        if !recent_apps_path.exists() {
+            debug!("creating recent apps path for apps");
+            fs::create_dir_all(&recent_apps_path)?;
+        }
 
         // Create the index if it doesn't exist
         let index = if index_path.join("meta.json").exists() {
@@ -186,13 +226,23 @@ impl AppSearchService {
             Index::create_in_dir(&index_path, schema.clone())?
         };
 
+        let recent_apps_index = if recent_apps_path.join("meta.json").exists() {
+            Index::open_in_dir(&recent_apps_path)?
+        } else {
+            Index::create_in_dir(&recent_apps_path, recent_apps_schema.clone())?
+        };
+
         // TODO: We can configure this to be more fine-grained
         let writer = Arc::new(Mutex::new(index.writer(50_000_000)?));
+        let recent_app_writer = recent_apps_index.writer(50_000_000)?;
         Ok(Self {
             config: config.clone(),
             schema,
             index,
             writer,
+            recent_apps_schema,
+            recent_apps_index,
+            recent_app_writer,
             index_worker_handle: None,
             watcher_handler: None,
         })
@@ -424,6 +474,102 @@ impl AppSearchService {
         }
 
         Ok(results)
+    }
+
+    //TODO: we can support limit
+    pub fn list_recent_apps(&self) -> tantivy::Result<Vec<RecentAppMetadata>> {
+        info!("List recent apps");
+        let reader = self
+            .recent_apps_index
+            .reader_builder()
+            .reload_policy(tantivy::ReloadPolicy::OnCommitWithDelay)
+            .try_into()?;
+        let field = match self.recent_apps_schema.get_field("last_accessed") {
+            Ok(field) => field,
+            Err(e) => {
+                error!("Failed to get field: {}", e);
+                return Err(e);
+            }
+        };
+        info!("Field: {:?}", field);
+        let searcher = reader.searcher();
+        let top_collector =
+            TopDocs::with_limit(5).order_by_fast_field("last_accessed", Order::Desc);
+        let top_docs: Vec<(DateTime, DocAddress)> = match searcher.search(&AllQuery, &top_collector)
+        {
+            Ok(top_docs) => top_docs.into_iter().collect(),
+            Err(e) => {
+                error!("Failed to get top docs: {}", e);
+                return Err(e);
+            }
+        };
+        let mut results = Vec::new();
+
+        for (_score, doc_addr) in top_docs {
+            let doc: TantivyDocument = searcher.doc(doc_addr)?;
+            let mut app = RecentAppMetadata::default();
+            for (field, value) in doc.get_sorted_field_values() {
+                let field_name = self.recent_apps_schema.get_field_name(field).to_string();
+                // Join all values into a single string (semicolon-separated)
+                let joined_values = value
+                    .iter()
+                    .filter_map(|val| val.as_str())
+                    .collect::<Vec<_>>()
+                    .join(";");
+
+                match field_name.as_str() {
+                    "name" => app.name = joined_values,
+                    "icon" => app.icon = joined_values,
+                    "path" => app.path = joined_values,
+                    "exec" => app.exec = joined_values,
+                    "last_accessed" => app.last_accessed = joined_values,
+                    _ => {}
+                }
+            }
+            results.push(app);
+        }
+        Ok(results)
+    }
+    pub fn register_recent_app(
+        &mut self,
+        recent_app: RecentAppMetadata,
+    ) -> tantivy::Result<String> {
+        let reader = self
+            .recent_apps_index
+            .reader_builder()
+            .reload_policy(tantivy::ReloadPolicy::OnCommitWithDelay)
+            .try_into()?;
+        let last_accessed = DateTime::from_utc(OffsetDateTime::parse(
+            recent_app.last_accessed.as_str(),
+            &Rfc3339,
+        )?);
+        let schema = self.recent_apps_schema.clone();
+        let new_recent_app_doc = doc!(
+            schema.get_field("name")? => recent_app.name,
+            schema.get_field("icon")? => recent_app.icon,
+            schema.get_field("exec")? => recent_app.exec,
+            schema.get_field("path")? => recent_app.path,
+            schema.get_field("last_accessed")? => last_accessed,
+        );
+        let term = Term::from_field_text(schema.get_field("name")?, recent_app.name.as_str());
+        let doc = extract_doc_given_app_path(&reader, &term).unwrap_or_else(|e| {
+            error!("Failed to extract doc: {}", e);
+            None
+        });
+        if let Some(_doc) = doc {
+            let _result = self.recent_app_writer.delete_term(term);
+            info!("Removed indexed recent app entry: {:?}", recent_app.name);
+        }
+        match self.recent_app_writer.add_document(new_recent_app_doc) {
+            Ok(_) => info!("Indexed recent app: {}", recent_app.name),
+            Err(e) => error!("Failed to index app entry: {}", e),
+        }
+        if let Err(e) = self.recent_app_writer.commit() {
+            error!("Failed to commit index: {:?}", e);
+        } else {
+            debug!("Committed indexed recent app data to disk.");
+        }
+        Ok("success".to_string())
     }
 
     /// Graceful shutdown (optional: cancels task)

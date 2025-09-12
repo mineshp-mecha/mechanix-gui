@@ -3,12 +3,12 @@ use crate::{
     prelude::*,
     systems::{UniversalSearchWindowCamera, WINDOW_SIZE},
     ui::{
-        BAR_SIZE, BrowserApps, Container, FrequentlyUsedApps, SearchItems, SearchResults,
-        SearchText, frequently_used_apps, search_input, search_items,
+        frequently_used_apps, search_input, search_items, BrowserApps, Container, FrequentlyUsedApps,
+        SearchItems, SearchResults, SearchText, BAR_SIZE,
     },
 };
 use animation::{
-    combinator::{event, parallel, sequence, tween, tween_exact},
+    combinator::{event, parallel, sequence, tween},
     interpolate::node_to,
     prelude::*,
 };
@@ -33,7 +33,6 @@ pub fn listen_open_event(
     icons: Res<UniversalSearchIcons>,
 ) {
     trigger.propagate(false);
-
     if let Ok((e_container)) = q_container.single() {
         println!("container found");
         let from = Node {

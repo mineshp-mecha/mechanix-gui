@@ -132,6 +132,9 @@ impl FileSearchService {
         let schema = Self::create_schema();
         let index_path = home_dir.join(&config.index_dir);
 
+        if !index_path.exists() {
+            fs::create_dir_all(&index_path)?;
+        }
         // Create the index if it doesn't exist
         let index = if index_path.join("meta.json").exists() {
             Index::open_in_dir(&index_path)?
@@ -380,11 +383,22 @@ impl FileSearchService {
         let buffer_size_kb = self.config.read_file_content_upto_in_kb;
         let watch_path: PathBuf = self.config.files_dir_to_watch.clone().into();
 
+        let schema = self.schema.clone(); // make sure schema is Arc or Clone
+        let index_reader = self.index.reader()?; // Make sure this is thread safe
+        Self::index_existing_files(
+            &self.config.files_dir_to_watch,
+            self.config.max_depth,
+            &allowed_extensions,
+            &index_reader,
+            &self.writer.clone(),
+            &schema,
+            buffer_size_kb,
+        );
+        info!("Indexed existing files.");
         debug!("Watching path: {}", watch_path.display());
         if !watch_path.exists() {
             anyhow::bail!("Watch path does not exist: {}", watch_path.display());
         }
-
         // Event channels
         let (event_tx, mut event_rx) = mpsc::channel::<Event>(100);
         let (watcher_request_tx, mut watcher_request_rx) =

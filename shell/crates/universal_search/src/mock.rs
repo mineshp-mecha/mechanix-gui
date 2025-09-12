@@ -1,5 +1,5 @@
 use bevy::{asset::AssetPath, ecs::system::command::trigger, prelude::*};
-use freedesktop_desktop_entry::{Iter, default_paths, get_languages_from_env};
+use freedesktop_desktop_entry::{default_paths, get_languages_from_env, Iter};
 use freedesktop_icons::lookup;
 use std::path::Path;
 

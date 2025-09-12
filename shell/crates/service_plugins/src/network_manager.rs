@@ -324,27 +324,27 @@ fn handle_network_action_events(
                     let service = service.clone();
                     let result_sender = sender.0.clone();
                     pool.spawn(async move {
-                        match service.known_networks().await {
-                            Ok(networks) => {
-                                if let Err(err) =
-                                    result_sender.send(NetworkResult::ListKnownNetworks(networks))
-                                {
-                                    error!("failed to send known networks: {err}");
-                                }
-                            }
-                            Err(err) => {
-                                error!("failed to list known networks: {err}");
-                                let error_type = ErrorType::ActionFailed {
-                                    action: NetworkAction::ListKnownNetworks,
-                                    message: "Failed to list known networks".to_string(),
-                                };
-                                if let Err(err) =
-                                    result_sender.send(NetworkResult::Error(error_type))
-                                {
-                                    error!("failed to send list known networks error: {err}");
-                                }
-                            }
-                        }
+                        // match service.known_networks().await {
+                        //     Ok(networks) => {
+                        //         if let Err(err) =
+                        //             result_sender.send(NetworkResult::ListKnownNetworks(networks))
+                        //         {
+                        //             error!("failed to send known networks: {err}");
+                        //         }
+                        //     }
+                        //     Err(err) => {
+                        //         error!("failed to list known networks: {err}");
+                        //         let error_type = ErrorType::ActionFailed {
+                        //             action: NetworkAction::ListKnownNetworks,
+                        //             message: "Failed to list known networks".to_string(),
+                        //         };
+                        //         if let Err(err) =
+                        //             result_sender.send(NetworkResult::Error(error_type))
+                        //         {
+                        //             error!("failed to send list known networks error: {err}");
+                        //         }
+                        //     }
+                        // }
                     })
                         .detach();
                 }

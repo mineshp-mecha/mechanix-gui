@@ -83,16 +83,16 @@ impl Plugin for MxSearchPlugin {
             .insert_resource(AppSearchResult::default())
             .insert_resource(FileSearchResult::default())
             .insert_resource(AppActionsSearchResult::default())
-            .add_event::<MxSearchActionEvent>();
-        // .add_systems(Startup, (init_mxsearch_service, setup_channel)) // Async task so temp move service result to static
-        // .add_systems(Update, poll_service_init)
-        // .add_systems(
-        //     Update,
-        //     (
-        //         handle_action_events,
-        //         poll_action_result_events.after(handle_action_events),
-        //     ),
-        // );
+            .add_event::<MxSearchActionEvent>()
+            .add_systems(Startup, (init_mxsearch_service, setup_channel)) // Async task so temp move service result to static
+            .add_systems(Update, poll_service_init)
+            .add_systems(
+                Update,
+                (
+                    handle_action_events,
+                    poll_action_result_events.after(handle_action_events),
+                ),
+            );
     }
 }
 
@@ -171,7 +171,7 @@ fn handle_action_events(
                             }
                         }
                     })
-                    .detach();
+                        .detach();
                 }
             }
             MxSearchAction::SearchApplications(query) => {
@@ -205,7 +205,7 @@ fn handle_action_events(
                             }
                         }
                     })
-                    .detach();
+                        .detach();
                 } else {
                     error!("service not initialized");
                 }
@@ -238,7 +238,7 @@ fn handle_action_events(
                             }
                         }
                     })
-                    .detach();
+                        .detach();
                 }
             }
             MxSearchAction::SearchAppActions(query) => {
@@ -271,7 +271,7 @@ fn handle_action_events(
                             }
                         }
                     })
-                    .detach();
+                        .detach();
                 }
             }
         }

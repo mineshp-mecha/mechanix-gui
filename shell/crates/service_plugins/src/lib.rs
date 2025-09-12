@@ -1,6 +1,6 @@
 
 pub mod bluetooth;
-// pub mod mxsearch;
+pub mod mxsearch;
 pub mod network_manager;
 pub mod pulse_audio;
 pub mod upower;
@@ -9,10 +9,10 @@ extern crate upower as upower_dbus;
 extern crate networkmanager as networkmanager_dbus;
 extern crate pulseaudio as pulseaudio_dbus;
 pub use crate::bluetooth::BluetoothPlugin;
-// pub use crate::mxsearch::AppSearchResult;
-// pub use crate::mxsearch::MxSearchAction;
-// pub use crate::mxsearch::MxSearchActionEvent;
-// pub use crate::mxsearch::MxSearchPlugin;
+pub use crate::mxsearch::AppSearchResult;
+pub use crate::mxsearch::MxSearchAction;
+pub use crate::mxsearch::MxSearchActionEvent;
+pub use crate::mxsearch::MxSearchPlugin;
 pub use crate::network_manager::NetworkManagerPlugin;
 pub use crate::pulse_audio::PulseAudioPlugin;
 pub use upower_dbus::interfaces::device::BatteryLevel as UPowerBatteryLevel;

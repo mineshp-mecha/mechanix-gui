@@ -3,6 +3,7 @@ mod utils;
 
 pub use crate::service::AppInfo;
 pub use crate::service::AppSearchService;
+pub use crate::service::RecentAppMetadata;
 use serde::Deserialize;
 
 /// App search service, watch dir for .desktop files and generate app info
@@ -24,6 +25,8 @@ use serde::Deserialize;
 pub struct Apps {
     pub enable_search: bool,
     pub index_dir: String,
+    pub recent_apps_limit: usize,
+    pub recent_apps_dir: String,
     pub desktop_apps_dir: String,
     pub search_limit: usize,
     searchable_fields: Vec<String>,

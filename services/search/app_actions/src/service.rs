@@ -4,12 +4,7 @@ use log::{debug, error, info, warn};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Deserialize;
 use std::fs::read_dir;
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{collections::HashMap, fs, path::{Path, PathBuf}, sync::{Arc, Mutex}, time::Duration};
 use tantivy::query::TermQuery;
 use tantivy::schema::{Field, IndexRecordOption, Value, STRING};
 use tantivy::{
@@ -219,7 +214,9 @@ impl AppActionsService {
             dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?;
         let schema = Self::create_schema();
         let index_path = home_dir.join(&config.index_dir);
-
+        if !index_path.exists() {
+            fs::create_dir_all(&index_path)?;
+        }
         // Create the index if it doesn't exist
         let index = if index_path.join("meta.json").exists() {
             Index::open_in_dir(&index_path)?
@@ -287,7 +284,7 @@ impl AppActionsService {
                 },
                 notify::Config::default(),
             )
-            .expect("Failed to create watcher");
+                .expect("Failed to create watcher");
 
             if let Err(e) = watcher.watch(&watch_path_clone, RecursiveMode::NonRecursive) {
                 error!("Failed to start watcher: {}", e);
