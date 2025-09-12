@@ -3,7 +3,7 @@ mod server;
 mod service;
 
 use crate::error::ServerError;
-use crate::server::{ServerInterface, SERVED_AT};
+use crate::server::{SERVED_AT, ServerInterface};
 use anyhow::{Context, Result};
 use app_actions::{AppActionsConfig, AppActionsService};
 use apps::{AppSearchService, Apps as AppSearchConfig};
@@ -61,7 +61,6 @@ async fn main() -> Result<(), ServerError> {
 
     debug!("D-Bus connection built");
 
-
     let mut app_search_service_opt = None;
     if config.apps.enable_search {
         let mut app_search_service = match AppSearchService::new(&config.apps) {
@@ -82,7 +81,7 @@ async fn main() -> Result<(), ServerError> {
     }
 
     let mut file_search_service_opt = None;
-    if config.files.enable_search { 
+    if config.files.enable_search {
         let mut file_search_service = match FileSearchService::new(&config.files) {
             Ok(s) => s,
             Err(e) => {

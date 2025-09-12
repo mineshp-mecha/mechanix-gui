@@ -5,7 +5,7 @@ use apps::{AppInfo, AppSearchService, RecentAppMetadata};
 use files::FileInfo;
 use log::{debug, error, info, warn};
 use std::sync::Arc;
-use zbus::{dbus_interface, fdo::Error as ZbusError, SignalContext};
+use zbus::{SignalContext, dbus_interface, fdo::Error as ZbusError};
 
 /// The D-Bus path where the ConfigServer interface is served
 pub const SERVED_AT: &str = "/org/mechanix/MxSearch";
@@ -164,9 +164,7 @@ impl ServerInterface {
         }
         if let Some(app_action_service) = &self.app_actions_service {
             // At some point later: perform a search
-            let results = match app_action_service
-                .search(search, self.config.apps.search_limit)
-            {
+            let results = match app_action_service.search(search, self.config.apps.search_limit) {
                 Ok(results) => results,
                 Err(err) => {
                     error!("Error searching app actions: {}", err);
@@ -176,25 +174,26 @@ impl ServerInterface {
             debug!("app_actions search result: {:?}", results);
             Ok(results)
         } else {
-            Err(ZbusError::Failed("Search App Action is disabled".to_string()))
+            Err(ZbusError::Failed(
+                "Search App Action is disabled".to_string(),
+            ))
         }
     }
-    
+
     // Dbus method call return value:
     // ({'name': <'Application'>, 'icon': <'hello.png'>, 'exec': <'test'>, 'path': <'/hello/worlds'>, 'last_accessed': <'1898-04-09T00:00:00+00:00'>},)
-    pub async fn register_recent_apps(&mut self, recent_app: RecentAppMetadata) -> zbus::fdo::Result<String> {
+    pub async fn register_recent_apps(
+        &mut self,
+        recent_app: RecentAppMetadata,
+    ) -> zbus::fdo::Result<String> {
         info!("register_recent_app: {:?}", recent_app);
         if !self.config.apps.enable_search {
             warn!("Search App Action is disabled");
-            return Err(ZbusError::Failed(
-                "Search App is disabled".to_string(),
-            ));
+            return Err(ZbusError::Failed("Search App is disabled".to_string()));
         }
         if let Some(app_search_service) = &mut self.app_search_service {
             // At some point later: perform a search
-            let results = match app_search_service
-                .register_recent_app(recent_app)
-            {
+            let results = match app_search_service.register_recent_app(recent_app) {
                 Ok(results) => results,
                 Err(err) => {
                     error!("Error searching app actions: {}", err);
@@ -204,22 +203,20 @@ impl ServerInterface {
             debug!("app_actions search result: {:?}", results);
             Ok(results)
         } else {
-            Err(ZbusError::Failed("Search App Action is disabled".to_string()))
+            Err(ZbusError::Failed(
+                "Search App Action is disabled".to_string(),
+            ))
         }
     }
     pub async fn list_recent_apps(&self) -> zbus::fdo::Result<Vec<RecentAppMetadata>> {
         info!("list recent apps");
         if !self.config.apps.enable_search {
             warn!("Search App Action is disabled");
-            return Err(ZbusError::Failed(
-                "Search App is disabled".to_string(),
-            ));
+            return Err(ZbusError::Failed("Search App is disabled".to_string()));
         }
         if let Some(app_search_service) = &self.app_search_service {
             // At some point later: perform a search
-            let results = match app_search_service
-                .list_recent_apps()
-            {
+            let results = match app_search_service.list_recent_apps() {
                 Ok(results) => results,
                 Err(err) => {
                     error!("Error searching app actions: {}", err);
@@ -229,7 +226,9 @@ impl ServerInterface {
             debug!("app_actions search result: {:?}", results);
             Ok(results)
         } else {
-            Err(ZbusError::Failed("Search App Action is disabled".to_string()))
+            Err(ZbusError::Failed(
+                "Search App Action is disabled".to_string(),
+            ))
         }
     }
 }
