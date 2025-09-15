@@ -9,3 +9,7 @@ interfaces:
       path: /dev/input/event0
     home:
       path: /dev/input/event2
+    volume_up:
+      path: /dev/input/event3
+    volume_down:
+      path: /dev/input/event3

@@ -19,6 +19,8 @@ pub struct Interfaces {
 pub struct HwButtons {
     pub power: Power,
     pub home: Home,
+    pub volume_up: VolumeUp,
+    pub volume_down: VolumeDown,
 }
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Power {
@@ -29,6 +31,17 @@ pub struct Power {
 pub struct Home {
     pub path: String,
 }
+
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub struct VolumeUp {
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub struct VolumeDown {
+    pub path: String,
+}
+
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Display {

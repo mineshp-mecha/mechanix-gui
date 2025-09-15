@@ -7,6 +7,8 @@ use zbus::zvariant::Type;
 pub enum Key {
     Power,
     Home,
+    VolumeUp,
+    VolumeDown,
     Unknown,
 }
 
@@ -15,6 +17,8 @@ impl From<evdev::Key> for Key {
         match value {
             evdev::Key::KEY_POWER => Key::Power,
             evdev::Key::KEY_FN_1 => Key::Home,
+            evdev::Key::KEY_UP => Key::VolumeUp,
+            evdev::Key::KEY_DOWN => Key::VolumeDown,
             _ => Key::Unknown,
         }
     }

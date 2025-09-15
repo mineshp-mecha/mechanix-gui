@@ -17,6 +17,7 @@ use interfaces::
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
     let config = match read_configs_yml() {
         Ok(config) => config,
         Err(e) => {
@@ -70,6 +71,8 @@ async fn main() -> Result<()> {
 
     let power_button_path = config.interfaces.hw_buttons.power.path.clone();
     let home_button_path = config.interfaces.hw_buttons.home.path.clone();
+    let volume_down_button_path = config.interfaces.hw_buttons.volume_down.path.clone();
+    let volume_up_button_path = config.interfaces.hw_buttons.volume_up.path.clone();
 
     let _hw_button_handle = tokio::spawn(async move {
         if let Err(e) = hw_buttons_notification_stream(
@@ -77,6 +80,8 @@ async fn main() -> Result<()> {
             &_hw_button_bus_connection,
             power_button_path,
             home_button_path,
+            volume_up_button_path,
+            volume_down_button_path,
         )
         .await
         {
