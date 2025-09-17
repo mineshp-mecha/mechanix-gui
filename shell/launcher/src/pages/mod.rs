@@ -7,3 +7,4 @@ pub mod power_options;
 pub mod settings_panel;
 pub mod splash_screen;
 pub mod status_bar;
+pub mod extension_toast;

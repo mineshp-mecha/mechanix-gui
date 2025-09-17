@@ -18,3 +18,4 @@ pub mod settings;
 pub mod settings_panel;
 pub mod uptime;
 pub mod wireless;
+pub mod volume;

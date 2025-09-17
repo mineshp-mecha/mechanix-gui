@@ -1,13 +1,8 @@
-use crate::{
-    init_services_home,
-    modules::{
-        applications::model::DesktopEntriesModel, battery::model::BatteryModel,
-        clock::model::ClockModel, power_options::service::PowerOptionsService,
-        running_apps::app_manager::AppManagerMessage,
-    },
-    AppMessage, AppParams, BatteryMessage, BluetoothMessage, BrightnessMessage,
-    InitServicesParamsHome, RunningAppsMessage, SoundMessage, UiParams,
-};
+use crate::{init_services_home, modules::{
+    applications::model::DesktopEntriesModel, battery::model::BatteryModel,
+    clock::model::ClockModel, power_options::service::PowerOptionsService,
+    running_apps::app_manager::AppManagerMessage,
+}, AppMessage, AppParams, BatteryMessage, BluetoothMessage, BrightnessMessage, ExtensionAppsMessage, InitServicesParamsHome, RunningAppsMessage, SoundMessage, UiParams};
 use mctk_core::context::Model;
 use mctk_core::{
     context::{self},
@@ -58,11 +53,11 @@ pub fn launch_homescreen(ui_params: UiParams) -> anyhow::Result<()> {
     let namespace = app_id.clone();
 
     let mut layer_shell_opts = LayerOptions {
-        anchor: wlr_layer::Anchor::TOP | wlr_layer::Anchor::LEFT | wlr_layer::Anchor::RIGHT,
+        anchor: wlr_layer::Anchor::BOTTOM,
         layer: wlr_layer::Layer::Bottom,
         keyboard_interactivity: wlr_layer::KeyboardInteractivity::OnDemand,
         namespace: Some(namespace.clone()),
-        zone: 36 as i32,
+        zone: 0 as i32,
     };
 
     let window_info = WindowInfo {
@@ -152,7 +147,6 @@ pub fn launch_homescreen(ui_params: UiParams) -> anyhow::Result<()> {
                         let _ = window_tx_2.clone().send(WindowMessage::Send {
                             message: msg!(Message::RunningAppsToggle { show: value }),
                         });
-
                         if value {
                             let _ = app_channel_tx_2
                                 .clone()
@@ -160,6 +154,15 @@ pub fn launch_homescreen(ui_params: UiParams) -> anyhow::Result<()> {
                         }
                     }
                 },
+                AppMessage::Extension { message } => {
+                    match message {
+                        ExtensionAppsMessage::Attached { label} => {
+                            let _ = window_tx_2.clone().send(WindowMessage::Send {
+                                message: msg!(Message::ShowExtensionToast { label }),
+                            });
+                        }
+                    }
+                }
                 AppMessage::ChangeLayer(layer) => {
                     layer_shell_opts.layer = layer;
                     let _ = layer_tx

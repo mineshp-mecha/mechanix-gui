@@ -55,6 +55,7 @@ use mctk_core::{
 use settings::LauncherSettings;
 use theme::LauncherTheme;
 use tracing_subscriber::EnvFilter;
+use crate::modules::volume::handler::VolumeButtonHandler;
 
 #[derive(Default, Debug, Clone)]
 pub struct AppParams {
@@ -76,6 +77,11 @@ pub enum BatteryMessage {
 pub enum RunningAppsMessage {
     Status { count: i32 },
     Toggle { value: bool },
+}
+
+#[derive(Debug)]
+pub enum ExtensionAppsMessage {
+    Attached { label: String },
 }
 
 #[derive(Debug)]
@@ -138,6 +144,9 @@ enum AppMessage {
     AppClose {
         app_id: String,
     },
+    Extension {
+        message: ExtensionAppsMessage,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -327,6 +336,7 @@ fn init_services_home(init_params: InitServicesParamsHome) -> JoinHandle<()> {
         // let running_apps_f = run_running_apps_handler(app_channel.clone());
         let app_manager_f = run_app_manager_handler(app_manager_msg_rx, app_channel.clone());
         let home_button_f = run_home_button_handler(app_channel.clone());
+        let volume_button_f = run_volume_button_handler(app_channel.clone());
 
         runtime
             .block_on(runtime.spawn(async move {
@@ -343,7 +353,8 @@ fn init_services_home(init_params: InitServicesParamsHome) -> JoinHandle<()> {
                     net_f,
                     // running_apps_f,
                     app_manager_f,
-                    home_button_f
+                    home_button_f,
+                    volume_button_f
                 )
             }))
             .unwrap();
@@ -431,6 +442,11 @@ async fn run_home_button_handler(app_channel: Sender<AppMessage>) {
     let home_button_handle = HomeButtonHandler::new(app_channel);
     home_button_handle.run().await;
 }
+async fn run_volume_button_handler(app_channel: Sender<AppMessage>) {
+    let volume_button_handle = VolumeButtonHandler::new(app_channel);
+    volume_button_handle.run().await;
+}
+
 
 async fn run_app_manager_handler(
     msg_rx: mpsc::Receiver<AppManagerMessage>,

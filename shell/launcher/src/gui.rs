@@ -4,6 +4,7 @@ use crate::modules::running_apps::running_app::{AppDetails, RunningApp};
 use crate::modules::settings_panel::rotation::component::RotationStatus;
 use crate::pages::app_drawer::AppDrawer;
 use crate::pages::app_switcher::AppSwitcher;
+use crate::pages::extension_toast::ExtensionToast;
 use crate::pages::home_ui::HomeUi;
 use crate::pages::power_options::PowerOptions;
 use crate::pages::settings_panel::SettingsPanel;
@@ -30,6 +31,7 @@ use std::any::Any;
 use std::cmp::{max, min};
 use std::collections::{HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
+use tracing::info;
 use upower::BatteryStatus;
 
 pub const BEZIER_POINTS: [f64; 4] = [0.0, 0.0, 480.0, 480.0];
@@ -120,6 +122,8 @@ pub enum Message {
     Shutdown(ShutdownState),
     Restart(RestartState),
     ChangeLayer(Layer),
+    ShowExtensionToast { label: String },
+    HideExtensionToast,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -257,6 +261,8 @@ pub struct LauncherState {
     restart_pressed: bool,
     current_layer: Layer,
     app_opening: Option<DesktopEntry>,
+    extension_toast: Option<String>,
+    extension_toast_deadline: Option<std::time::Instant>,
 }
 
 #[component(State = "LauncherState")]
@@ -455,6 +461,14 @@ impl Component for Launcher {
             return;
         }
 
+        // Auto-hide extension toast after deadline
+        if let Some(deadline) = self.state_ref().extension_toast_deadline {
+            if std::time::Instant::now() >= deadline {
+                self.state_mut().extension_toast = None;
+                self.state_mut().extension_toast_deadline = None;
+            }
+        }
+
         // println!("on_tick swipe {:?}", self.state_ref().swipe.clone());
         if let Some(mut swipe) = self.state_ref().swipe.clone() {
             let Swipe {
@@ -567,6 +581,8 @@ impl Component for Launcher {
             restart_pressed: false,
             current_layer: Layer::Bottom,
             app_opening: None,
+            extension_toast: None,
+            extension_toast_deadline: None,
         });
     }
 
@@ -608,7 +624,7 @@ impl Component for Launcher {
         let mut start_node = node!(
             Div::new().bg(Color::rgba(0., 0., 0., 0.64)),
             lay![
-                size_pct: [100],
+                size: [540, 620],
                 cross_alignment: Alignment::Stretch,
                 axis_alignment: Alignment::Stretch,
                 direction: Direction::Column,
@@ -741,6 +757,18 @@ impl Component for Launcher {
                     pinned_apps,
                 },
                 lay![size_pct: [100, Auto],]
+            ));
+        }
+
+        // Render extension attached toast if present
+        if let Some(label) = self.state_ref().extension_toast.clone() {
+            start_node = start_node.push(node!(
+                ExtensionToast { label },
+                lay![
+                    size_pct: [100],
+                    position_type: Absolute,
+                    position: [0., 0., 0., 0.],
+                ]
             ));
         }
 
@@ -1074,6 +1102,14 @@ impl Component for Launcher {
                         }
                     }
                 },
+                Message::ShowExtensionToast { label } => {
+                    self.state_mut().extension_toast = Some(label.clone());
+                    self.state_mut().extension_toast_deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(2500));
+                }
+                Message::HideExtensionToast => {
+                    self.state_mut().extension_toast = None;
+                    self.state_mut().extension_toast_deadline = None;
+                }
                 Message::ChangeLayer(layer) => {
                     self.state_mut().current_layer = *layer;
                 }
