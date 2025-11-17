@@ -21,6 +21,19 @@ This file is for registering our mechanix portal, and describing what all Interf
 
 Now the `org.freedesktop.impl.portal.FileChooser` is the default interface where all of the calls for FileChooser will be called. We’re writing this interface to this config file because, we need our portal to override the FileChooser portal that was there already in the OS.
 
+####  OPTION - 1
+We could also have written this config file in the following way:
+1. Identify the current desktop environment: $XDG_CURRENT_DESKTOP (in my case it was gnome)
+2. Find the default configuration for current desktop environment, in my case it was `/usr/share/xdg-desktop-portal/gnome-portals.conf`
+3. Copy the contents of this file to our config file
+```shell
+org.freedesktop.impl.portal.FileChooser=mechanix;
+```
+4. `Reload the portal configuration: systemctl --user restart xdg-desktop-portal.service`
+
+
+
+#### OPTION - 2
 Now lets create `portals.conf`
 
 ```bash

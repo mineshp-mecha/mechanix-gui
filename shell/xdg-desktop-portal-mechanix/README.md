@@ -55,3 +55,9 @@ gdbus call --session \
 ```
 gdbus call --session     --dest org.mechanix.services.Notification     --object-path /org/mechanix/services     --method org.freedesktop.impl.portal.Notification.AddNotification     "/test/handle"     "test_app"     "test_id"     "{'title': <'Test Title'>, 'body': <'Test Body'>, 'priority': <'normal'>}"     "{}"
 (uint32 0, {'notification_id': <'test_id'>})
+
+Command to trigger the backend
+```shell
+gdbus call --session   --dest org.mechanix.services   --object-path /org/freedesktop/portal/desktop   --method org.freedesktop.impl.portal.FileChooser.OpenFile   "/org/mechanix/services/FileChooser"   "com.example.app"   ""   "Open a file"   "{}"
+```
+

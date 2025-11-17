@@ -1,6 +1,6 @@
 use crate::connections::PortalResponse;
-use crate::gui::xdg_portal_handler::Message;
-use mctk_core::msg;
+use crate::gui::gui_handler::{handle_message, Message};
+use tokio::task;
 use tokio::time::{self, Duration};
 use zbus::zvariant;
 use zbus::{
@@ -159,7 +159,15 @@ impl FileChooser {
 
         match options {
             FileChooserOptions::OpenFile(s) => {
-                // dbg!(&s);
+                // Launch the GUI file chooser in a blocking task and wait until it closes
+                let opts = s.clone();
+                let _ = task::spawn_blocking(move || {
+                    handle_message(Message::FileChooserRequested(
+                        FileChooserOptions::OpenFile(opts),
+                    ));
+                })
+                .await;
+
                 let selected_files = FileChooserResult {
                     uris: vec!["file:///home/vrn21/p.json".to_string()],
                     choices: vec![],
