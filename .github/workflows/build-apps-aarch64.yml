@@ -1,158 +1,206 @@
 name: Apps - Build aarch64
+
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
       - dev
       - dev-arm64-build
+      - pre-release
+    paths:
+      - ".github/workflows/build-apps-aarch64.yml"
+      - "apps/**"
 
 env:
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
   RUST_BACKTRACE: short
   RUSTUP_MAX_RETRIES: 10
-  MACOSX_DEPLOYMENT_TARGET: 10.7
   CARGO_NET_GIT_FETCH_WITH_CLI: true
-  MECHANIX_APTLY_SERVER_ENDPOINT: ${{ vars.MECHANIX_APTLY_SERVER_ENDPOINT }}
-  MECHANIX_APTLY_DEB_REPOSITORY_DISTRO: ${{ vars.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}
-  MECHANIX_APTLY_DEB_REPOSITORY_NAME: ${{ vars.MECHANIX_APTLY_DEB_REPOSITORY_NAME }}
-  MECHANIX_APTLY_S3_PUBLISH_ENDPOINT: ${{ vars.MECHANIX_APTLY_S3_PUBLISH_ENDPOINT }}
+  MECHA_PULP_USERNAME: ${{ secrets.MECHA_PULP_USERNAME }}
+  MECHA_PULP_PASSWORD: ${{ secrets.MECHA_PULP_PASSWORD }}
+  MECHA_PULP_API_URL: ${{ vars.MECHA_PULP_API_URL }}
+  MECHA_PULP_DEBS_REPOSITORY_NAME: ${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}
 
 jobs:
+  # Detect which apps have changed
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      settings: ${{ steps.filter.outputs.settings }}
+      notes: ${{ steps.filter.outputs.notes }}
+      files: ${{ steps.filter.outputs.files }}
+      music: ${{ steps.filter.outputs.music }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            settings:
+              - 'apps/settings/**'
+            notes:
+              - 'apps/notes/**'
+            files:
+              - 'apps/files/**'
+            music:
+              - 'apps/music/**'
+
   build:
-    environment: dev
     name: ${{ matrix.name }}
+    needs: detect-changes
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Settings
-            package: mechanix-settings
-            artifact: mechanix-settings-aarch64-unknown-linux-gnu.tar.gz
-            path: apps
+          - name: mechanix-settings
+            app: settings
+            folder: settings
+            binary: mechanix_settings
 
-          - name: Camera
-            package: mechanix-camera
-            artifact: mechanix-camera-aarch64-unknown-linux-gnu.tar.gz
-            path: apps
-      
-          - name: Files
-            package: mechanix-files
-            artifact: mechanix-files-aarch64-unknown-linux-gnu.tar.gz
-            path: apps
+          - name: mechanix-notes
+            app: notes
+            folder: notes
+            binary: mechanix_notes
+
+          - name: mechanix-files
+            app: files
+            folder: files
+            binary: mechanix_files
+
+          - name: mechanix-music
+            app: music
+            folder: music
+            binary: mechanix_music
 
     runs-on: ubicloud-standard-2-arm
-    continue-on-error: false
+    environment: pre-release
+    continue-on-error: true
+
     steps:
-      - name: Setup | Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust 1.83.0
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          rustup default 1.83.0
-
-      - name: Install cargo-deb
-        run: cargo install cargo-deb
-
-      - name: Update apt
-        run: sudo apt update
-
+      # Install dependencies
       - name: Install dependencies
         run: |
-          sudo apt install \
-          libwayland-dev \
-          libxkbcommon-dev \
-          libdbus-1-dev \
-          libpam0g-dev \
-          libclang-dev \
-          protobuf-compiler \
-          libpulse-dev \
-          libunwind-dev \
-          libgstreamer1.0-dev \
-          libgstreamer-plugins-base1.0-dev \
-          libgstreamer-plugins-bad1.0-dev \
-          gstreamer1.0-plugins-base \
-          gstreamer1.0-plugins-good \
-          gstreamer1.0-plugins-bad \
-          gstreamer1.0-plugins-ugly \
-          gstreamer1.0-libav \
-          gstreamer1.0-tools \
-          gstreamer1.0-x \
-          gstreamer1.0-alsa \
-          gstreamer1.0-gl \
-          gstreamer1.0-gtk3 \
-          gstreamer1.0-qt5 \
-          gstreamer1.0-pulseaudio
+          sudo apt update
+          sudo apt install -y git tar unzip curl clang cmake pkg-config \
+            libwayland-dev libwayland-cursor0 libwayland-egl1 \
+            libwayland-egl-backend-dev libegl1-mesa-dev libgles2-mesa-dev libxkbcommon-dev
 
-      - name: Set up Git SSH key
+      # Install NuShell
+      - name: Install Nushell
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY_GIT }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          curl -fsSL https://apt.fury.io/nushell/gpg.key | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/fury-nushell.gpg
+          echo "deb https://apt.fury.io/nushell/ /" | sudo tee /etc/apt/sources.list.d/fury.list
+          sudo apt update
+          sudo apt install nushell
 
-      - name: Build [${{ matrix.package }}]
+      # Add Comet repository
+      - name: Add Comet repository
         run: |
-          cd ${{ matrix.path }}
-          cargo --config net.git-fetch-with-cli=true fetch
-          cargo build --release --package ${{ matrix.package }}
-          ls -la
+          curl -fsSL https://pub-a2f44c787cec4290833312e57fd59522.r2.dev/comet.asc | \
+            sudo gpg --dearmor -o /usr/share/keyrings/comet-deb.gpg
+          echo "deb [signed-by=/usr/share/keyrings/comet-deb.gpg] http://pkg.mecha.so/debian pulp upload" | \
+            sudo tee /etc/apt/sources.list.d/comet.list
+          sudo apt update
 
-      - name: Package deb [${{ matrix.package }}]
-        run: |
-          cd ${{ matrix.path }}
-          cargo deb --no-build --package ${{ matrix.package }}
-          ls -la
+      # Checkout repository
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for git operations
 
-      - name: Extract package details
-        id: package_details
+      # Install Flutter eLinux
+      - name: Install Flutter eLinux
         run: |
-          cd ${{ matrix.path }}
-          PACKAGE_NAME=$(ls target/debian/*.deb | xargs basename)
-          FOLDER_NAME=$(echo $PACKAGE_NAME | sed -r 's/_[0-9]+\.[0-9]+\.[0-9]+-[0-9]+.*$//')
-          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          echo "folder_name=$FOLDER_NAME" >> $GITHUB_OUTPUT
-          echo "Package Name: $PACKAGE_NAME"
-          echo "Folder Name: $FOLDER_NAME"
+          if [ ! -d "/opt/flutter-elinux" ]; then
+            git clone https://github.com/sony/flutter-elinux.git
+            sudo mv flutter-elinux /opt/
+          fi
+          echo "PATH=$PATH:/opt/flutter-elinux/bin" >> $GITHUB_ENV
 
-      - name: Upload package to Aptly
+      # Build the app (ALWAYS)
+      - name: Build ${{ matrix.name }}
+        working-directory: apps/${{ matrix.folder }}
         run: |
-          cd ${{ matrix.path }}
-          echo "Uploading package: ${{ steps.package_details.outputs.package_name }}"
-          echo "To folder: ${{ steps.package_details.outputs.folder_name }}"
-          curl -X POST -F file=@target/debian/${{ steps.package_details.outputs.package_name }} ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/files/${{ steps.package_details.outputs.folder_name }}
-      
-      - name: Add package to local repo
-        run: |
-          echo "Adding package from folder: ${{ steps.package_details.outputs.folder_name }}"
-          curl -X POST ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/repos/${{ env.MECHANIX_APTLY_DEB_REPOSITORY_NAME }}/file/${{ steps.package_details.outputs.folder_name }}
-      
-      - name: Update local published repo
-        run: |
-          echo "Updating local published repo for MECHANIX_APTLY_DEB_REPOSITORY_DISTRO: ${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}"
-          curl -X PUT -H 'Content-Type: application/json' --data '{
-            "Architectures": ["arm64", "amd64"],
-            "Signing": {"Skip": true}
-          }' ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/publish/:./${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}
-      
-      - name: Update S3 published repo
-        run: |
-          echo "Updating S3 published repo for MECHANIX_APTLY_DEB_REPOSITORY_DISTRO: ${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}"
-          curl -X PUT -H 'Content-Type: application/json' --data '{
-            "Sources": [{"Name": "${{ env.MECHANIX_APTLY_DEB_REPOSITORY_NAME }}"}],
-            "Architectures": ["arm64", "amd64"],
-            "Signing": {"Skip": true}
-          }' ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/publish/s3:${{env.MECHANIX_APTLY_S3_PUBLISH_ENDPOINT}}:/${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}    
-      
-      - name: Prepare artifacts [${{ matrix.package }}]
-        run: |
-          mkdir build
-          cp ${{ matrix.path }}/target/release/${{ matrix.package }} ./build
-          cp ${{ matrix.path }}/target/debian/*.deb ./build
+          flutter-elinux pub get
+          flutter-elinux build elinux --release
 
-      - name: Upload artifacts
+      # Move entire bundle to ./build/<binary>
+      - name: Prepare build folder ${{ matrix.name }}
+        run: |
+          mkdir -p ./build/${{ matrix.binary }}
+          cp -r "apps/${{ matrix.folder }}/build/elinux/arm64/release/bundle/"* "./build/${{ matrix.binary }}/"
+
+      # Package Debian using Nushell script (ALWAYS)
+      - name: Package Debian ${{ matrix.name }}
+        working-directory: apps
+        run: |
+          nu package-deb.nu "${{ matrix.folder }}" "../build/deb"
+
+      # List artifacts
+      - name: List artifacts ${{ matrix.name }}
+        run: ls -la ./build/deb/
+
+      # Setup Pulp CLI
+      - name: Setup | Pulp CLI
+        run: |
+          pipx install --force pulp-cli[pygments]
+          pipx inject pulp-cli pulp-cli-deb
+
+      - name: Configure Pulp CLI
+        run: |
+          set -euo pipefail
+          PULP_API_URL="${MECHA_PULP_API_URL}:8080"
+          pulp config create \
+            --username "$MECHA_PULP_USERNAME" \
+            --password "$MECHA_PULP_PASSWORD" \
+            --base-url "$PULP_API_URL" \
+            --overwrite
+
+      # Publish .deb to Pulp (ONLY IF CHANGED or MANUAL TRIGGER)
+      - name: Publish to Pulp [${{ matrix.app }}]
+        if: |          
+          (matrix.app == 'settings' && needs.detect-changes.outputs.settings == 'true') ||
+          (matrix.app == 'notes' && needs.detect-changes.outputs.notes == 'true') ||
+          (matrix.app == 'files' && needs.detect-changes.outputs.files == 'true') ||
+          (matrix.app == 'music' && needs.detect-changes.outputs.music == 'true')
+        run: |
+          set -euo pipefail
+
+          DEB_FILE=$(find ./build/deb -name "mechanix-${{ matrix.app }}*.deb" -type f | head -n1)
+          
+          if [ -z "$DEB_FILE" ]; then
+            echo "[ERROR] No .deb file found for mechanix-${{ matrix.app }}"
+            exit 1
+          fi
+          
+          echo "[INFO] 📦 Publishing: $DEB_FILE"
+          
+          pulp deb content upload \
+            --repository="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            --file="$DEB_FILE"
+          
+          echo "[INFO] Creating publication..."
+          PUB_HREF=$(pulp deb publication create \
+            --repository="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            --signing-service=mecha-pkg-sign \
+            | jq -r '.pulp_href')
+          
+          echo "[INFO] Updating distribution..."
+          pulp deb distribution update \
+            --name="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            --base-path="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            --repository="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}"
+          
+          echo "[INFO] ✅ Package ${{ matrix.app }} published successfully!"
+
+      # Upload full artifacts (ALWAYS)
+      - name: Upload artifact ${{ matrix.name }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ./build/*
+          name: ${{ matrix.binary }}
+          path: ./build/${{ matrix.binary }}/

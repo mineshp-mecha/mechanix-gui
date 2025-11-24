@@ -1,186 +1,188 @@
-name: Shell - Build aarch64
+name: Shell Crates - Build, Package, and Publish for aarch64
+
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
       - dev
       - dev-arm64-build
+      - pre-release
+    paths:
+      - "shell/**"
+      - ".github/workflows/build-shell-aarch64.yml"
 
 env:
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
   RUST_BACKTRACE: short
   RUSTUP_MAX_RETRIES: 10
-  MACOSX_DEPLOYMENT_TARGET: 10.7
   CARGO_NET_GIT_FETCH_WITH_CLI: true
-  MECHANIX_APTLY_SERVER_ENDPOINT: ${{ vars.MECHANIX_APTLY_SERVER_ENDPOINT }}
-  MECHANIX_APTLY_DEB_REPOSITORY_DISTRO: ${{ vars.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}
-  MECHANIX_APTLY_DEB_REPOSITORY_NAME: ${{ vars.MECHANIX_APTLY_DEB_REPOSITORY_NAME }}
-  MECHANIX_APTLY_S3_PUBLISH_ENDPOINT: ${{ vars.MECHANIX_APTLY_S3_PUBLISH_ENDPOINT }}
+  MECHA_PULP_USERNAME: ${{ secrets.MECHA_PULP_USERNAME }}
+  MECHA_PULP_PASSWORD: ${{ secrets.MECHA_PULP_PASSWORD }}
+  MECHA_PULP_API_URL: ${{ vars.MECHA_PULP_API_URL }}
+  MECHA_PULP_DEBS_REPOSITORY_NAME: ${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}
 
 jobs:
   build:
-    environment: dev
     name: ${{ matrix.name }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
-          # - name: Status Bar
-          #   package: mechanix-status-bar
-          #   artifact: mechanix-status-bar-aarch64-unknown-linux-gnu.tar.gz
-          #   path: shell
-
-          # - name: Greeter
-          #   package: mechanix-greeter
-          #   artifact: mechanix-greeter-aarch64-unknown-linux-gnu.tar.gz
-          #   path: shell
-
-          # - name: Settings Panel
-          #   package: mechanix-settings-panel
-          #   artifact: mechanix-settings-panel-aarch64-unknown-linux-gnu.tar.gz
-          #   path: shell
-
-          # - name: Lock Screen
-          #   package: mechanix-lock-screen
-          #   artifact: mechanix-lock-screen-aarch64-unknown-linux-gnu.tar.gz
-          #   path: shell
-
-          # - name: Home Screen
-          #   package: mechanix-home-screen
-          #   artifact: mechanix-home-screen-aarch64-unknown-linux-gnu.tar.gz
-          #   path: shell
-
-          - name: Laucher
-            package: mechanix-launcher
-            artifact: mechanix-launcher-aarch64-unknown-linux-gnu.tar.gz
-            path: shell
-
-          # - name: App Drawer
-          #   package: mechanix-app-drawer
-          #   artifact: mechanix-app-drawer-aarch64-unknown-linux-gnu.tar.gz
-          #   path: shell
-
-          # - name: App Switcher
-          #   package: mechanix-app-switcher
-          #   artifact: mechanix-app-switcher-aarch64-unknown-linux-gnu.tar.gz
-          #   path: shell
-
-          # - name: Power options
-          #   package: mechanix-power-options
-          #   artifact: mechanix-power-options-aarch64-unknown-linux-gnu.tar.gz
-          #   path: shell
-
-          # - name: Notification
-          #   package: mechanix-notification
-          #   artifact: mechanix-notification-aarch64-unknown-linux-gnu.tar.gz
-          #   path: shell
-
-          # - name: Power options
-          #   package: mechanix-polkit-agent
-          #   artifact: mechanix-polkit-agent-aarch64-unknown-linux-gnu.tar.gz
-          #   path: shell
-
-          - name: Keyboard
-            package: mechanix-keyboard
-            artifact: mechanix-keyboard-aarch64-unknown-linux-gnu.tar.gz
-            path: shell
+          - name: Launcher Crate Build
+            package: launcher
 
     runs-on: ubicloud-standard-2-arm
+    environment: pre-release
     continue-on-error: false
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust 1.86.0
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          rustup default 1.86.0
+      - name: Install Rust 1.91.1
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.1
 
       - name: Install cargo-deb
         run: cargo install cargo-deb
 
-      - name: Update apt
-        run: sudo apt update
-
       - name: Install dependencies
         run: |
-          sudo apt install \
-          libwayland-dev \
-          libxkbcommon-dev \
-          libdbus-1-dev \
-          libpam0g-dev \
-          libclang-dev \
-          libpulse-dev
+          sudo apt update
 
-      - name: Set up Git SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY_GIT }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          # List of packages
+          packages=(
+            g++
+            pkg-config
+            libx11-dev
+            libudev-dev
+            libxkbcommon-x11-0
+            libgles2-mesa-dev
+            libgl1-mesa-dev
+            libegl-dev
+            libegl1-mesa-dev
+            libvulkan-dev
+            libwayland-dev
+            libxkbcommon-dev
+            libdbus-1-dev
+            libpam0g-dev
+            libclang-dev
+            libpulse-dev
+            libasound-dev
+            python3-pip
+            pipx
+            jq
+            curl
+            librust-alsa-sys-dev
+            libasound2-dev
+            libxkbfile-dev
+            libxkbcommon-x11-dev
+            wayland-protocols
+            libxkbcommon-tools
+          )
 
-      - name: Build [${{ matrix.package }}]
+          # Loop over packages and install only available ones
+          for pkg in "${packages[@]}"; do
+            if apt-cache show "$pkg" > /dev/null 2>&1; then
+              echo "[INFO] Installing $pkg"
+              sudo apt install -y "$pkg"
+            else
+              echo "[WARN] Package $pkg not found, skipping."
+            fi
+          done
+
+      # Pulp CLI setup
+      - name: Setup | Pulp CLI
         run: |
-          cd ${{ matrix.path }}
+          pipx install --force pulp-cli[pygments]
+          pipx inject pulp-cli pulp-cli-deb
+
+      - name: Setup | Pulp CLI Configuration
+        run: |
+          set -euo pipefail
+          if [[ -z "$MECHA_PULP_API_URL" ]]; then
+            echo "[ERROR] MECHA_PULP_API_URL is empty."
+            exit 1
+          fi
+          # Construct full Pulp API URL (add port)
+          PULP_API_URL="${MECHA_PULP_API_URL}:8080"
+          echo "[INFO] Using Pulp base URL: $PULP_API_URL"
+
+          # Configure Pulp CLI using the correct env vars
+          pulp config create \
+            --username "$MECHA_PULP_USERNAME" \
+            --password "$MECHA_PULP_PASSWORD" \
+            --base-url "$PULP_API_URL" \
+            --overwrite
+
+      - name: Build ${{ matrix.package }}
+        run: |
           cargo --config net.git-fetch-with-cli=true fetch
           cargo build --release --package ${{ matrix.package }}
-          ls -la
+          ls -la target/release
 
-      - name: Package deb [${{ matrix.package }}]
+      - name: Package deb ${{ matrix.package }}
         run: |
-          cd ${{ matrix.path }}
-          cargo deb --no-build --package ${{ matrix.package }}
-          ls -la
+          sudo apt install -y fakeroot
+          fakeroot cargo deb --no-build --package ${{ matrix.package }}
+          ls -la target/debian
 
-      - name: Extract package details
-        id: package_details
+      - name: Repack DEB natively [${{ matrix.package }}]
         run: |
-          cd ${{ matrix.path }}
-          PACKAGE_NAME=$(ls target/debian/*.deb | xargs basename)
-          FOLDER_NAME=$(echo $PACKAGE_NAME | sed 's/_.*$//')
-          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          echo "folder_name=$FOLDER_NAME" >> $GITHUB_OUTPUT
-          echo "Package Name: $PACKAGE_NAME"
-          echo "Folder Name: $FOLDER_NAME"
+          set -euo pipefail
+          DEB_FILE=$(ls target/debian/${{ matrix.package }}_*.deb | head -n1)
+          echo "[INFO] Repacking: $DEB_FILE"
 
-      - name: Upload package to Aptly
-        run: |
-          cd ${{ matrix.path }}
-          echo "Uploading package: ${{ steps.package_details.outputs.package_name }}"
-          echo "To folder: ${{ steps.package_details.outputs.folder_name }}"
-          curl -X POST -F file=@target/debian/${{ steps.package_details.outputs.package_name }} ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/files/${{ steps.package_details.outputs.folder_name }}
+          TMPDIR=$(mktemp -d)
+          trap 'rm -rf "$TMPDIR"' EXIT
 
-      - name: Add package to local repo
-        run: |
-          echo "Adding package from folder: ${{ steps.package_details.outputs.folder_name }}"
-          curl -X POST ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/repos/${{ env.MECHANIX_APTLY_DEB_REPOSITORY_NAME }}/file/${{ steps.package_details.outputs.folder_name }}
+          # Extract & repack under fakeroot
+          fakeroot dpkg-deb -R "$DEB_FILE" "$TMPDIR/pkg"
+          fakeroot dpkg-deb -b "$TMPDIR/pkg" "$DEB_FILE"  
 
-      - name: Update local published repo
-        run: |
-          echo "Updating local published repo for MECHANIX_APTLY_DEB_REPOSITORY_DISTRO: ${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}"
-          curl -X PUT -H 'Content-Type: application/json' --data '{
-            "Architectures": ["arm64", "amd64"],
-            "Signing": {"Skip": true}
-          }' ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/publish/:./${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}
+          echo "[INFO] ✅ Repacked: $DEB_FILE"
 
-      - name: Update S3 published repo
+      - name: Prepare artifacts ${{ matrix.package }}
         run: |
-          echo "Updating S3 published repo for MECHANIX_APTLY_DEB_REPOSITORY_DISTRO: ${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}"
-          curl -X PUT -H 'Content-Type: application/json' --data '{
-            "Sources": [{"Name": "${{ env.MECHANIX_APTLY_DEB_REPOSITORY_NAME }}"}],
-            "Architectures": ["arm64", "amd64"],
-            "Signing": {"Skip": true}
-          }' ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/publish/s3:${{env.MECHANIX_APTLY_S3_PUBLISH_ENDPOINT}}:/${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}
-
-      - name: Prepare artifacts [${{ matrix.package }}]
-        run: |
-          mkdir build
-          cp ${{ matrix.path }}/target/release/${{ matrix.package }} ./build
-          cp ${{ matrix.path }}/target/debian/*.deb ./build
+          mkdir -p build
+          cp target/release/${{ matrix.package }} ./build || true
+          cp target/debian/${{ matrix.package }}_*.deb ./build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: ${{ matrix.package }}-artifacts
           path: ./build/*
+
+      - name: Publish to Pulp ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+
+          DEB_FILE=$(find ./build -name "${{ matrix.package }}*.deb" -type f | head -n1)
+
+          if [ -z "$DEB_FILE" ]; then
+            echo "[ERROR] No .deb file found for ${{ matrix.package }}"
+            exit 1
+          fi
+
+          echo "[INFO] 📦 Publishing: $DEB_FILE"
+
+          pulp deb content upload \
+            --repository="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            --file="$DEB_FILE"
+
+          echo "[INFO] Creating publication..."
+          PUB_HREF=$(pulp deb publication create \
+            --repository="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            --signing-service=mecha-pkg-sign \
+            | jq -r '.pulp_href')
+
+          echo "[INFO] Updating distribution..."
+          pulp deb distribution update \
+            --name="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            --base-path="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            --repository="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}"
+
+          echo "[INFO] ✅ Package ${{ matrix.package }} published successfully!"

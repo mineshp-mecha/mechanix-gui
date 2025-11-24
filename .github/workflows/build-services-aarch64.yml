@@ -1,70 +1,91 @@
 name: Services - Build aarch64
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
       - dev
       - dev-arm64-build
+      - pre-release
+    paths:
+      - "services/**"
+      - ".github/workflows/build-services-aarch64.yml"
 
 env:
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
   RUST_BACKTRACE: short
   RUSTUP_MAX_RETRIES: 10
-  MACOSX_DEPLOYMENT_TARGET: 10.7
   CARGO_NET_GIT_FETCH_WITH_CLI: true
-  MECHANIX_APTLY_SERVER_ENDPOINT: ${{ vars.MECHANIX_APTLY_SERVER_ENDPOINT }}
-  MECHANIX_APTLY_DEB_REPOSITORY_DISTRO: ${{ vars.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}
-  MECHANIX_APTLY_DEB_REPOSITORY_NAME: ${{ vars.MECHANIX_APTLY_DEB_REPOSITORY_NAME }} 
-  MECHANIX_APTLY_S3_PUBLISH_ENDPOINT: ${{ vars.MECHANIX_APTLY_S3_PUBLISH_ENDPOINT }}
-
+  MECHA_PULP_USERNAME: ${{ secrets.MECHA_PULP_USERNAME }}
+  MECHA_PULP_PASSWORD: ${{ secrets.MECHA_PULP_PASSWORD }}
+  MECHA_PULP_API_URL: ${{ vars.MECHA_PULP_API_URL }}
+  MECHA_PULP_DEBS_REPOSITORY_NAME: ${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}
 jobs:
   build:
-    environment: dev
     name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          - name: conf service for mechanix
+            package: mxconf
+          - name: session dbus service
+            package: mechanix-session-services
+          - name: search service
+            package: mxsearch
           - name: system dbus service
-            package: mechanix_system_dbus_server
-            artifact: mechanix_system_dbus_server-aarch64-unknown-linux-gnu.tar.gz
-            path: services
-
-          - name: desktop dbus service
-            package: mechanix_desktop_dbus_server
-            artifact: mechanix_desktop_dbus_server-aarch64-unknown-linux-gnu.tar.gz
-            path: services
-
-          - name: store server
-            package: mechanix_store_server
-            artifact: mechanix_store_server-aarch64-unknown-linux-gnu.tar.gz
-            path: services
+            package: mechanix-system-services
+          - name: extension service
+            package: mechanix-extension-service
 
     runs-on: ubicloud-standard-2-arm
-    continue-on-error: false
+    environment: pre-release
+    continue-on-error: true
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust 1.81.0
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          rustup default 1.81.0
+      - name: Install Rust 1.85.0
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.85.0
 
       - name: Install cargo-deb
         run: cargo install cargo-deb
 
-      - name: Update apt
-        run: sudo apt update
-
       - name: Install dependencies
         run: |
-          sudo apt install \
-          libdbus-1-dev \
-          libpulse-dev \
-          libpam0g-dev \
-          libclang-dev
+          sudo apt update
+          sudo apt install -y \
+            libdbus-1-dev \
+            libpulse-dev \
+            libpam0g-dev \
+            libclang-dev
+
+      # Pulp CLI setup
+      - name: Setup | Pulp CLI
+        run: |
+          pipx install --force pulp-cli[pygments]
+          pipx inject pulp-cli pulp-cli-deb
+
+      - name: Setup | Pulp CLI Configuration
+        run: |
+          set -euo pipefail
+          if [[ -z "$MECHA_PULP_API_URL" ]]; then
+            echo "[ERROR] MECHA_PULP_API_URL is empty."
+            exit 1
+          fi
+          # Construct full Pulp API URL (add port)
+          PULP_API_URL="${MECHA_PULP_API_URL}:8080"
+          echo "[INFO] Using Pulp base URL: $PULP_API_URL"
+
+          # Configure Pulp CLI using the correct env vars
+          pulp config create \
+            --username "$MECHA_PULP_USERNAME" \
+            --password "$MECHA_PULP_PASSWORD" \
+            --base-url "$PULP_API_URL" \
+            --overwrite
 
       - name: Set up Git SSH key
         run: |
@@ -75,65 +96,60 @@ jobs:
 
       - name: Build [${{ matrix.package }}]
         run: |
-          cd ${{ matrix.path }}
           cargo --config net.git-fetch-with-cli=true fetch
           cargo build --release --package ${{ matrix.package }}
-          ls -la
+          ls -la target/release
 
       - name: Package deb [${{ matrix.package }}]
         run: |
-          cd ${{ matrix.path }}
           cargo deb --no-build --package ${{ matrix.package }}
-          ls -la
+          ls -la target/debian
 
-      - name: Extract package details
-        id: package_details
+      - name: Repack DEB natively [${{ matrix.package }}]
         run: |
-          cd ${{ matrix.path }}
-          PACKAGE_NAME=$(ls target/debian/*.deb | xargs basename)
-          FOLDER_NAME=$(echo $PACKAGE_NAME | sed -r 's/_[0-9]+\.[0-9]+\.[0-9]+-[0-9]+.*$//')
-          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          echo "folder_name=$FOLDER_NAME" >> $GITHUB_OUTPUT
-          echo "Package Name: $PACKAGE_NAME"
-          echo "Folder Name: $FOLDER_NAME"
+          set -euo pipefail
+          DEB_FILE=$(ls target/debian/${{ matrix.package }}_*.deb | head -n1)
+          echo "[INFO] Repacking: $DEB_FILE"
 
-      - name: Upload package to Aptly
-        run: |
-          cd ${{ matrix.path }}
-          echo "Uploading package: ${{ steps.package_details.outputs.package_name }}"
-          echo "To folder: ${{ steps.package_details.outputs.folder_name }}"
-          curl -X POST -F file=@target/debian/${{ steps.package_details.outputs.package_name }} ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/files/${{ steps.package_details.outputs.folder_name }}
-      
-      - name: Add package to local repo
-        run: |
-          echo "Adding package from folder: ${{ steps.package_details.outputs.folder_name }}"
-          curl -X POST ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/repos/${{ env.MECHANIX_APTLY_DEB_REPOSITORY_NAME }}/file/${{ steps.package_details.outputs.folder_name }}
-      
-      - name: Update local published repo
-        run: |
-          echo "Updating local published repo for MECHANIX_APTLY_DEB_REPOSITORY_DISTRO: ${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}"
-          curl -X PUT -H 'Content-Type: application/json' --data '{
-            "Architectures": ["arm64", "amd64"],
-            "Signing": {"Skip": true}
-          }' ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/publish/:./${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}
-      
-      - name: Update S3 published repo
-        run: |
-          echo "Updating S3 published repo for MECHANIX_APTLY_DEB_REPOSITORY_DISTRO: ${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}"
-          curl -X PUT -H 'Content-Type: application/json' --data '{
-            "Sources": [{"Name": "${{ env.MECHANIX_APTLY_DEB_REPOSITORY_NAME }}"}],
-            "Architectures": ["arm64", "amd64"],
-            "Signing": {"Skip": true}
-          }' ${{ env.MECHANIX_APTLY_SERVER_ENDPOINT }}/api/publish/s3:${{env.MECHANIX_APTLY_S3_PUBLISH_ENDPOINT}}:/${{ env.MECHANIX_APTLY_DEB_REPOSITORY_DISTRO }}    
-      
+          TMPDIR=$(mktemp -d)
+          trap 'rm -rf "$TMPDIR"' EXIT
+
+          # Extract & repack under fakeroot
+          fakeroot dpkg-deb -R "$DEB_FILE" "$TMPDIR/pkg"
+          fakeroot dpkg-deb -b "$TMPDIR/pkg" "$DEB_FILE"  
+
+          echo "[INFO] ✅ Repacked: $DEB_FILE"
+
       - name: Prepare artifacts [${{ matrix.package }}]
         run: |
-          mkdir build
-          cp ${{ matrix.path }}/target/release/${{ matrix.package }} ./build
-          cp ${{ matrix.path }}/target/debian/*.deb ./build
+          mkdir -p build
+          cp target/release/${{ matrix.package }} ./build || true
+          cp target/debian/${{ matrix.package }}_*.deb ./build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: ${{ matrix.package }}-artifacts
           path: ./build/*
+
+      - name: Publish to Pulp [${{ matrix.package }}]
+        run: |
+          set -euo pipefail
+          DEB_FILE=$(ls target/debian/${{ matrix.package }}_*.deb | head -n1)
+          echo "[INFO] Uploading: $DEB_FILE"
+          pulp deb content upload \
+            --repository="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            --file="$DEB_FILE"
+
+          echo "[INFO] Creating publication..."
+          PUB_HREF=$(pulp deb publication create \
+            --repository="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            | jq -r '.pulp_href')
+
+          echo "[INFO] Updating distribution..."
+          pulp deb distribution update \
+            --name="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            --base-path="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}" \
+            --repository="${{ vars.MECHA_PULP_DEBS_REPOSITORY_NAME }}"
+
+          echo "[INFO] ✅ Package ${{ matrix.package }} published."

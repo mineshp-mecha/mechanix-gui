@@ -1,0 +1,51 @@
+[workspace]
+resolver = "3"
+members = [
+    "services/desktop",
+    "services/conf",
+    "services/system",
+    "services/search/*",
+    "services/extensions",
+    "shell/crates/*",
+    "shared/hw-buttons",
+    "dbus/freedesktop/*",
+    "dbus/mechanix/mxconf",
+    "dbus/mechanix/extensions",
+    "dbus/mechanix/system",
+]
+
+[workspace.package]
+version = "0.0.1"
+authors = [
+    "Akshay Raina <akshayr@mechasystems.com>",
+    "Shoaib Merchant <shoaibm@mechasystems.com>",
+]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/mecha-org/mechanix-gui"
+homepage = "https://mecha.so"
+categories = ["gui"]
+keywords = ["linux", "shell", "mobile", "gui", "ui"]
+
+[workspace.dependencies]
+mxconf_dbus = { path = "dbus/mechanix/mxconf" }
+notify = { version = "8.2.0" }
+tokio = { version = "1.46.1", features = ["full"] }
+log = { version = "0.4.27" }
+anyhow = { version = "1.0.99" }
+zbus = "4.1.2"
+serde = { version = "1.0.219", features = ["derive"] }
+futures = "0.3.31"
+thiserror = "2.0.12"
+env_logger = { version = "0.11.8" }
+gpui = { git = "https://github.com/namana-mecha/zed.git", rev = "7a0d37756b35e60e18b8e720b67f6b3ef464e17d", features = [
+    "wayland",
+    "linux-impeller",
+] }
+rust-embed = "8.8.0"
+networkmanager = { path = "dbus/freedesktop/networkmanager" }
+bluez = { path = "dbus/freedesktop/bluez" }
+upower = { path = "dbus/freedesktop/upower" }
+pulseaudio = { path = "dbus/freedesktop/pulseaudio" }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = [ "env-filter" ] }
