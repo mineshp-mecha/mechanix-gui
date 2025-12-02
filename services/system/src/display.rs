@@ -3,7 +3,8 @@ use log::{error, info, warn};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use zbus::{fdo::Error as ZbusError, interface};
-
+use zbus::message::Header;
+use crate::polkit::Polkit;
 
 /// ConfigServerInterface struct for D-Bus interface.
 ///
@@ -16,12 +17,17 @@ use zbus::{fdo::Error as ZbusError, interface};
 #[derive()]
 pub struct DisplayInterface {
     pub path: String,
+    pub polkit: Polkit,
 }
 
 #[interface(name = "org.mechanix.services.Display")]
 impl DisplayInterface {
-    pub fn get_brightness(&self) -> Result<u8, ZbusError> {
+    pub async fn get_brightness(&self,  #[zbus(header)] header: Header<'_>) -> Result<u8, ZbusError> {
         info!("init");
+        static ACTION_ID: &str = "org.mechanix.services.display.getbrightness";
+        info!("Shutdown all services: headers: {:?}", header);
+        self.polkit.validate(&header, ACTION_ID).await?;
+        info!("polkit validated");
         let file = match File::open(&self.path) {
             Ok(file) => file,
             Err(e) => {

@@ -19,6 +19,7 @@ env_logger = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 mechanix-hw-buttons = { path = "../../shared/hw-buttons" }
+zbus_polkit = { version = "4.0.0" }
 
 [package.metadata.deb]
 maintainer = "Akshay Raina <akshayr@mechasystems.com>"

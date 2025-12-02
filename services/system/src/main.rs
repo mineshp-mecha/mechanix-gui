@@ -1,6 +1,7 @@
 mod display;
 mod error;
 mod interfaces;
+mod polkit;
 
 use crate::display::DisplayInterface;
 use crate::interfaces::haptic_feedback::{HapticFeedbackInterface, HapticFeedbackParams};
@@ -10,6 +11,8 @@ use log::{debug, error, info, warn};
 use tokio::task::JoinHandle;
 use zbus::{connection, ConnectionBuilder};
 use zbus::zvariant::Type;
+use crate::error::ServerError;
+use crate::polkit::Polkit;
 
 pub const DISPLAY_CONNECTION_BUS_NAME: &str = "org.mechanix.services.Display";
 pub const HAPTIC_FEEDBACK_CONNECTION_BUS_NAME: &str = "org.mechanix.services.HapticFeedback";
@@ -79,49 +82,60 @@ async fn main() -> Result<()> {
     let paths = get_system_paths();
 
     let mut handles: Vec<JoinHandle<()>> = Vec::new();
-    let display_config = DisplayInterface {
-        path: paths.display_brightness_path,
-    };
+
     let haptic_config = HapticFeedbackInterface {
         path: paths.haptic_feedback_path,
     };
-    
-    let _display_bus_connection = connection::Builder::system()?
+
+    let display_conn  = ConnectionBuilder::system()?
         .name(DISPLAY_CONNECTION_BUS_NAME)?
-        .serve_at(SERVED_AT, display_config)?
-        .build()
-        .await?;
+        .build().await?;
 
-    let _haptic_bus_connection = connection::Builder::system()?
-        .name(HAPTIC_FEEDBACK_CONNECTION_BUS_NAME)?
-        .serve_at("/org/mechanix/services/HapticFeedback", haptic_config)?
-        .build()
-        .await?;
+    let polkit = Polkit::new(&display_conn).await?;
+    let display_config = DisplayInterface {
+        path: paths.display_brightness_path,
+        polkit: polkit,
+    };
+    display_conn.object_server().at(SERVED_AT, display_config).await?;
+    // let _display_bus_connection = connection::Builder::system()?
+    //     .name(DISPLAY_CONNECTION_BUS_NAME)?
+    //     .serve_at(SERVED_AT, display_config)?
+    //     .build()
+    //     .await?;
 
-    let hw_button_bus = HwButtonInterface {};
-    let _hw_button_bus_connection = connection::Builder::system()?
-        .name(HW_BUTTONS_CONNECTION_BUS_NAME)?
-        .serve_at("/org/mechanix/services/HwButton", hw_button_bus)?
-        .build()
-        .await?;
 
-    let _hw_button_handle = tokio::spawn(async move {
-        if let Err(e) = hw_buttons_notification_stream(
-            &hw_button_bus,
-            &_hw_button_bus_connection,
-            String::from(paths.power_button_path),
-            String::from(paths.home_button_path),
-            String::from(paths.volume_up_button_path),
-            String::from(paths.volume_down_button_path),
-            String::from(paths.extension_detection_path),
-        )
-            .await
-        {
-            error!("Error in power btn notification stream: {}", e);
-        }
-    });
 
-    handles.push(_hw_button_handle);
+
+    // let _haptic_bus_connection = connection::Builder::system()?
+    //     .name(HAPTIC_FEEDBACK_CONNECTION_BUS_NAME)?
+    //     .serve_at("/org/mechanix/services/HapticFeedback", haptic_config)?
+    //     .build()
+    //     .await?;
+    //
+    // let hw_button_bus = HwButtonInterface {};
+    // let _hw_button_bus_connection = connection::Builder::system()?
+    //     .name(HW_BUTTONS_CONNECTION_BUS_NAME)?
+    //     .serve_at("/org/mechanix/services/HwButton", hw_button_bus)?
+    //     .build()
+    //     .await?;
+    //
+    // let _hw_button_handle = tokio::spawn(async move {
+    //     if let Err(e) = hw_buttons_notification_stream(
+    //         &hw_button_bus,
+    //         &_hw_button_bus_connection,
+    //         String::from(paths.power_button_path),
+    //         String::from(paths.home_button_path),
+    //         String::from(paths.volume_up_button_path),
+    //         String::from(paths.volume_down_button_path),
+    //         String::from(paths.extension_detection_path),
+    //     )
+    //         .await
+    //     {
+    //         error!("Error in power btn notification stream: {}", e);
+    //     }
+    // });
+    //
+    // handles.push(_hw_button_handle);
 
     for handle in handles {
         handle.await?;

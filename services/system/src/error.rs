@@ -8,4 +8,6 @@ pub enum ServerError {
     FailedRegisterObject(zbus::Error),
     #[error("Failed to start dbus server: {0}")]
     FailedStartDBusServer(zbus::Error),
+    #[error("Failed to build polkit: {0}")]
+    FailedBuildPolkit(zbus::Error),
 }
