@@ -1,30 +1,27 @@
 use gpui::{prelude::FluentBuilder, *};
+use std::path::PathBuf;
 
 pub const APP_DRAWER_ICONS_DIR: &str = "icons/app-drawer/";
 
 #[derive(IntoElement, Clone, PartialEq, Debug)]
 pub enum IconName {
-    Telegram,
-    Mecha,
-    Chromium,
-    Files,
-    Firefox,
     Category,
     Search,
     Close,
+    DefaultApp,
+    Delete,
+    Info,
 }
 
 impl IconName {
     pub fn resolve(self) -> SharedString {
         let icon_path = match self {
-            Self::Telegram => "telegram.png",
-            Self::Mecha => "mecha.png",
-            Self::Chromium => "chromium.png",
-            Self::Files => "files.png",
-            Self::Firefox => "firefox.png",
             Self::Category => "category.png",
-            Self::Search => "search.png",
+            Self::Search => "search.svg",
             Self::Close => "x.png",
+            Self::DefaultApp => "default-app.png",
+            Self::Delete => "delete.svg",
+            Self::Info => "info.png",
         };
         format!("{}{}", APP_DRAWER_ICONS_DIR, icon_path).into()
     }
@@ -36,7 +33,7 @@ impl RenderOnce for IconName {
     }
 }
 
-#[derive(IntoElement)]
+#[derive(IntoElement, Debug)]
 pub struct Icon {
     path: SharedString,
     size: Option<(Pixels, Pixels)>,
@@ -72,22 +69,32 @@ impl Icon {
 impl RenderOnce for Icon {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl gpui::IntoElement {
         let is_svg = self.path.ends_with(".svg");
+        let is_absolute = self.path.starts_with("/");
 
+        // SVG HANDLING (tint only for relative assets)
         if is_svg {
-            // SVG icon case
-            let base = svg().path(self.path.clone()).w(px(40.)).h(px(40.));
+            if !is_absolute {
+                // Relative SVG → render with optional color
+                let svg_el = svg().path(self.path.clone()).w(px(40.)).h(px(40.));
 
-            // Apply color if available
-            let rendered = base.when_some(self.text_color, |this, color| this.text_color(color));
+                let tinted =
+                    svg_el.when_some(self.text_color, |this, color| this.text_color(color));
 
-            rendered.into_any_element()
-        } else {
-            // PNG / JPEG icon case
-            img(self.path.clone())
+                return tinted.into_any_element();
+            }
+        }
+
+        if is_absolute {
+            return img(PathBuf::from(self.path.as_str()))
                 .w(px(58.))
                 .h(px(58.))
-                .into_any_element()
+                .into_any_element();
         }
+
+        img(self.path.clone())
+            .w(px(58.))
+            .h(px(58.))
+            .into_any_element()
     }
 }
 

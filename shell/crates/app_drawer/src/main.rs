@@ -1,78 +1,39 @@
 use app_drawer::prelude::*;
+use app_drawer::ui::utils::prelude::DesktopApps;
 use commons::prelude::*;
 use gpui::*;
 
 fn main() {
     let application = gpui::Application::new().with_assets(Assets {});
+    let desktop_apps = DesktopApps::scan();
 
-    // Initialize the AppDrawerState
     let state = AppDrawerState {
-        apps: vec![
-            AppInfo {
-                id: 1,
-                name: "Files".into(),
-                category: "Recently used".into(),
-                icon_path: IconName::Files,
-            },
-            AppInfo {
-                id: 2,
-                name: "Telegram".into(),
-                category: "Recently used".into(),
-                icon_path: IconName::Telegram,
-            },
-            AppInfo {
-                id: 3,
-                name: "Chromium".into(),
-                category: "Productivity".into(),
-                icon_path: IconName::Chromium,
-            },
-            AppInfo {
-                id: 4,
-                name: "Firefox".into(),
-                category: "Productivity".into(),
-                icon_path: IconName::Firefox,
-            },
-            AppInfo {
-                id: 5,
-                name: "Mecha".into(),
-                category: "Settings".into(),
-                icon_path: IconName::Mecha,
-            },
-            AppInfo {
-                id: 6,
-                name: "Firefox".into(),
-                category: "Entertainment".into(),
-                icon_path: IconName::Firefox,
-            },
-            AppInfo {
-                id: 7,
-                name: "Mecha".into(),
-                category: "Photography".into(),
-                icon_path: IconName::Mecha,
-            },
-            AppInfo {
-                id: 8,
-                name: "Chromium".into(),
-                category: "Recently used".into(),
-                icon_path: IconName::Chromium,
-            },
-            AppInfo {
-                id: 9,
-                name: "Firefox".into(),
-                category: "Recently used".into(),
-                icon_path: IconName::Firefox,
-            },
-            AppInfo {
-                id: 10,
-                name: "Mecha".into(),
-                category: "Recently used".into(),
-                icon_path: IconName::Mecha,
-            },
-        ],
+        apps: desktop_apps,
         ..Default::default()
     };
 
     application.run(move |cx| {
+        // Register key bindings for the text input
+        cx.bind_keys([
+            KeyBinding::new("backspace", Backspace, None),
+            KeyBinding::new("delete", Delete, None),
+            KeyBinding::new("left", Left, None),
+            KeyBinding::new("right", Right, None),
+            KeyBinding::new("shift-left", SelectLeft, None),
+            KeyBinding::new("shift-right", SelectRight, None),
+            KeyBinding::new("cmd-a", SelectAll, None),
+            KeyBinding::new("ctrl-a", SelectAll, None), // Add Windows/Linux alternative
+            KeyBinding::new("home", Home, None),
+            KeyBinding::new("end", End, None),
+            KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, None),
+            KeyBinding::new("cmd-v", Paste, None),
+            KeyBinding::new("ctrl-v", Paste, None), // Add Windows/Linux alternative
+            KeyBinding::new("cmd-c", Copy, None),
+            KeyBinding::new("ctrl-c", Copy, None), // Add Windows/Linux alternative
+            KeyBinding::new("cmd-x", Cut, None),
+            KeyBinding::new("ctrl-x", Cut, None), // Add Windows/Linux alternative
+        ]);
+
         let window_bounds =
             WindowBounds::Windowed(Bounds::centered(None, size(px(540.0), px(620.0)), cx));
 
